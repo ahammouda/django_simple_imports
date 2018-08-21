@@ -2,8 +2,9 @@ import random,string
 
 from django.test import TestCase
 from django.contrib.auth.models import User
-from django_simple_imports.simple_imports.importer_manager_v2 import ImporterManager
-from django_simple_imports.tests_app.importers import UserImporter
+
+from ..simple_imports.importer_manager_v2 import ImporterManager
+from ..tests_app.importers import UserImporter
 
 
 class TestImporterManager(TestCase):
