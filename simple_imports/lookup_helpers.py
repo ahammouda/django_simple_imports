@@ -31,8 +31,17 @@ def get_typed_value(datatype,value):
     return value #: Returns string or object content as is
 
 
-#: Note right now this is not being used anywhere, but it is an interesting aside on the use of many to many fields
+#: Note right now this is not being used anywhere, but
+#: it is an interesting aside on the use of many to many fields
 def filter_objects_exactly_by_m2m(m2m_objects: List[Model], reverse_attribute)->List[Model]:
+    """
+    :param m2m_objects: A list of objects to which are related to another object, by it's `reverse_attribute`
+    :param reverse_attribute:
+    e.g.  Image.tag --m2m--> Tag // image = reverse_attribute of Tag, and m2m_objects would be all the tags
+
+    :return: A list of all the m2m _from_ objects associated by the m2m_objects ('to' objects)
+    """
+    #: TODO: What were you trying to say with this?
     # This works only when the associated list of the m2m field is a unique superset of other objects
     # If you want to filter the fields that ONLY have the m2m_objects input (and no more), this will fail
     sets = []

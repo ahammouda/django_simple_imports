@@ -138,6 +138,8 @@ class SystemImporter:
 
             self.importers_to_verticies[v.importer] = v
 
+        #: TODO: Check whether any dependent_importer fields in self.sorted_vertices[-1].importer are m2m, and
+        #:       throw an error if they are
         self.create_model = self.sorted_vertices[-1].importer.model
 
     def _get_import_fields(self):
@@ -182,7 +184,7 @@ class SystemImporter:
 
                     m2m_refs = value.split(M2M_DELIMITER)
                     for col,ref in enumerate(m2m_refs):
-                        self.importers_to_manager[_importer].update_kvs(
+                        self.importers_to_manager[_importer].update_kvs( #: Added
                             field_name=_field, value=ref, row=row, col=col
                         )
 

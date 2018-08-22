@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 from django.db import models
 
-from simple_imports.model_importer import ModelImporter
+from ..simple_imports.model_importer import ModelImporter
 
 from django.contrib.auth.models import User
 from .models import Company,UserProfile,Tag,Image

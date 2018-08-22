@@ -10,7 +10,7 @@ from .model_importer import ModelImporter
 
 class ImporterManager(object):
     """
-    An importer manager's only job is to get a related objects at the end of or flags if the objects don't exist.
+    An importer manager's only job is to get related objects or flags if the objects don't exist.
     (it is strictly lazy as in it only collects objects at the end) <- this may have some limitations.
               --> Try to architect s.t. you can swap such a manager out.
 
@@ -34,7 +34,7 @@ class ImporterManager(object):
         #: its reverse relations
         self.importer = importer
 
-        #: N.B: Right now, this isn't really used
+        #: TODO: Right now, this isn't really used
         self.create = create
 
         # TODO: Rename to self.current_row
@@ -148,7 +148,10 @@ class ImporterManager(object):
     def get_objects_from_rows(self):
         """
         This is really going to be for the 'root' object (i.e. the object actually getting imported).
-        As far as this class is used by the system importer, this function is highly specific
+
+        Therefore if a set of ImporterManagers are being used for both dependent data and the object that's being
+        created, this function will _only_ be called for the object being created
+        TODO: Maybe put this logic outside of ImporterManager then
         """
         if not self.create:
             return ;

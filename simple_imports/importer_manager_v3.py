@@ -10,10 +10,38 @@ from . import lookup_helpers
 
 from .model_importer import ModelImporter
 
-class ImporterManager(object):
+class RecordData(object):
+    def __init__(self, query: Q = None, available: bool = False):
+        self.query: Q = query
+        self.available: bool = available
+        self.objects = defaultdict(dict)
 
-    #: TODO: This is repeated in the SystemImporter class
-    def is_many_to_many(self, field: str, model: Model):
+
+class ImporterManager(object):
+    """
+    (Docstring from v2)
+    An importer manager's only job is to get related objects or flags if the objects don't exist.
+    (it is strictly lazy as in it only collects objects at the end) <- this may have some limitations.
+              --> Try to architect s.t. you can swap such a manager out.
+
+    The add_kv() function transitions a state machine, and increments the main data structure (self.kvs)
+
+    self.kvs is used to populated self.object_row_map which is the data structure accessed from outside this model
+
+
+    Some invariants:
+    *  A row will have more than 1 dictionary entry, if and only if, an importer depending on its associated manager
+       depends on it through a m2m relationship
+
+    Termination conditions (of external algorithm in system_importer):
+    *  Every row/col in the kvs table has a corresponding value associated with every field in:
+              - self.importer.required_fields
+              - self.importer.dependent_imports
+    """
+
+    #: TODO: This is repeated in the SystemImporter class, and used in a way you want to depricate
+    @staticmethod
+    def is_many_to_many(field: str, model: Model):
         if isinstance(getattr(model,field), ManyToManyField) or \
                 isinstance(getattr(model,field),ManyToManyDescriptor):
             return True
@@ -30,6 +58,8 @@ class ImporterManager(object):
         self.kvs = defaultdict(list)
         self.objs: QuerySet = None
 
+        self.is_m2m = is_m2m
+
         self.m2m_field: DefaultDict[str,bool] = defaultdict(bool)
         for key in self.importer.dependent_imports.keys():
             if self.is_many_to_many(key, self.importer.model):
@@ -43,9 +73,37 @@ class ImporterManager(object):
 
         self.object_row_map: Dict[int,List[Dict]] = {}
 
+    # def finished_required_fields(self):
+    #     ready = True
+    #
+    #     if self.importer.required_fields:
+    #         for rf in self.importer.required_fields:
+    #             if rf not in self.kvs[self.current_row][self.current_col].keys():
+    #                 ready=False
+    #     return ready
+    #
+    # def update_kvs_straight(self, field_name, value: Any):
+    #     """
+    #     :param field_name:
+    #     :param value:
+    #     """
+    #     self.current_row = 0 # STUB <-- specified outside of here
+    #     self.current_col = 0 # STUB <-- specified outside of here
+    #     self.kvs[self.current_row][self.current_col].update({field_name:value})
+    #
+    #     if self.is_m2m and self.finished_required_fields():
+    #         self.current_col += 1
+    #     elif self.finished_required_fields():
+    #         self.current_row += 1
+
     def update_kvs(self, field_name: str, value, row: int, col: int=0):
         """
+        Leaky abstraction -- definitely depends on some knowledge of how this is invoked (row/col specification)
 
+        Previous approach - state machine approach seemed you could depend only on the ModelImporter input,
+        and knowledge over whether this is a m2m object
+
+        Other approaches????
         """
         typed_value = lookup_helpers.get_typed_value(
             self.importer.field_types[field_name],value
@@ -54,12 +112,15 @@ class ImporterManager(object):
         # For many to many filters
         if self.m2m_field[field_name] and not self.create:
             #: TODO: This branch needs some testing
-            #:       --> assume there is a field that needs an image as a dependent import
+            #:       --> e.g. need an image with multiple tags
             field_name = f'{field_name}__in'
 
+        #: Edge case for m2m_field
         if self.m2m_field[field_name] and type(typed_value) != list:
             typed_value = [typed_value]
 
+        #: self.kvs is either being populated by object values referenced in a m2m relationship or NOT
+        #: If NOT => col == 0 always, and after the first append, you'll simply be updating self.kvs[row][0]
         if self.kvs[row] and col < len(self.kvs[row]):
             self.kvs[row][col].update({field_name: typed_value})
         else:
@@ -109,6 +170,10 @@ class ImporterManager(object):
     def get_objects_from_rows(self):
         """
         This is really going to be for the 'root' object (i.e. the object actually getting imported).
+
+        Therefore if a set of ImporterManagers are being used for both dependent data and the object that's being
+        created, this function will _only_ be called for the object being created
+        TODO: Maybe put this logic outside of ImporterManager then
         """
         if not self.create:
             raise ValueError('This should only be called for model managers associated with new objects, '
@@ -166,6 +231,9 @@ class ImporterManager(object):
 
         #: Returns either, a list of uncreated objects, or a list of created objects, with m2m attached and saved
         return objects
+
+    def get_objs_and_meta(self, row: int) -> List[Dict]:
+        return self.object_row_map[row]
 
     def get_objs(self, row: int) -> List[Dict]:
         #: TODO: simply return the row, and add error checking outside this method

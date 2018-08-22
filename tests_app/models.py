@@ -45,3 +45,39 @@ class Image(models.Model):
 class Document(models.Model):
     slug = models.CharField(max_length=255,null=False)
     image = models.ForeignKey(Image, on_delete=models.CASCADE)
+
+
+# *******************************************************************************
+# ******************* Generic Tables to Keep Tests Systematic *******************
+# *******************************************************************************
+
+# class IndependentModel(models.Model):
+#     field = models.CharField(max_length=255)
+#
+#
+# class IndependentModel0(models.Model):
+#     field = models.CharField(max_length=255)
+#
+#
+# class DependentModelFK(models.Model):
+#     dependent_field = models.ForeignKey(IndependentModel)
+#     free_field = models.CharField(max_length=255)
+#
+# class MultiDependentModelFK(models.Model):
+#     dependent_field = models.ForeignKey(IndependentModel)
+#     dependent_field0 = models.ForeignKey(IndependentModel0)
+#     free_field = models.CharField(max_length=255)
+#
+#
+# class DDependentModelFK(models.Model):
+#     ddependent_field = models.ForeignKey(IndependentModel)
+#     free_field = models.CharField(max_length=255)
+#
+#
+# class DependentModelM2M(models.Model):
+#     dependent_field = models.ManyToManyField(IndependentModel)
+#     free_field = models.CharField(max_length=255)
+#
+# class DependentModelM2M(models.Model):
+#     dependent_field = models.ManyToManyField(IndependentModel)
+#     free_field = models.CharField(max_length=255)
