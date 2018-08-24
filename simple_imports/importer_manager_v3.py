@@ -1,13 +1,12 @@
 from collections import defaultdict
-import functools
+
 from typing import *
 from copy import deepcopy
 
 from django.db.models import Model
-from django.db.models.fields.related_descriptors import ManyToManyDescriptor
-from django.db.models import Q,QuerySet,Model,ManyToManyField
+from django.db.models import Q,QuerySet,Model
 
-from . import lookup_helpers
+from . import helpers
 
 from .model_importer import ModelImporter
 
@@ -22,35 +21,24 @@ class RecordData(object):
 
 
 class ImporterManager(object):
+    """Stores key,value pairs needed to get or create objects from/in a relational database in `self.kvs`, then
+    If self.create is False:
+          populates `self.object_row_map` with data dependent on what is retrieved, and assuming
+    If self.create is True:
+          returns objects initialized with self.kvs data to be inserted into a relation database
+
+    -Some invariants-
+      *  A row will have more than 1 dictionary entry, if and only if, an importer depending on its associated manager
+         depends on it through a m2m relationship and self.is_m2m
+
+      *  not (self.is_m2m && self.create)
+
+      *  If `self.object_row_map` is non-empty ==>
+              Every row/col in the kvs table has a corresponding value associated with every field in:
+               - self.importer.required_fields
+               - self.importer.dependent_imports
+         See `self.update_kvs` for TODO on this count
     """
-    (Docstring from v2)
-    An importer manager's only job is to get related objects or flags if the objects don't exist.
-    (it is strictly lazy as in it only collects objects at the end) <- this may have some limitations.
-              --> Try to architect s.t. you can swap such a manager out.
-
-    The add_kv() function transitions a state machine, and increments the main data structure (self.kvs)
-
-    self.kvs is used to populated self.object_row_map which is the data structure accessed from outside this model
-
-
-    Some invariants:
-    *  A row will have more than 1 dictionary entry, if and only if, an importer depending on its associated manager
-       depends on it through a m2m relationship
-
-    Termination conditions (of external algorithm in system_importer):
-    *  Every row/col in the kvs table has a corresponding value associated with every field in:
-              - self.importer.required_fields
-              - self.importer.dependent_imports
-    """
-
-    #: TODO: This is repeated in the SystemImporter class, and used in a way you want to depricate
-    @staticmethod
-    def is_many_to_many(field: str, model: Model):
-        if isinstance(getattr(model,field), ManyToManyField) or \
-                isinstance(getattr(model,field),ManyToManyDescriptor):
-            return True
-        else:
-            return False
 
     def __init__(self, importer: ModelImporter=None, create: bool=False, is_m2m: bool=False):
         #: How this manager is used outside itself depends less on the importer and hence the model, but more on
@@ -60,14 +48,19 @@ class ImporterManager(object):
         self.create = create
 
         self.kvs = defaultdict(list)
-        self.objs: QuerySet = None
+        self.objects: QuerySet = None
 
-        self.is_m2m = is_m2m
-
+        #: If this is True for a field, then this.importer.model will be retrieved filtering on its m2m field
+        #:  with an __in=[value_0,value_1,...] (>>)
         self.m2m_field: DefaultDict[str,bool] = defaultdict(bool)
         for key in self.importer.dependent_imports.keys():
-            if self.is_many_to_many(key, self.importer.model):
+            if helpers.is_many_to_many(key, self.importer.model):
                 self.m2m_field[key] = True
+
+                if self.create:
+                    raise RuntimeError('Cannot currently create objects that have a m2m dependency.')
+
+        self.is_m2m = is_m2m #: Isn't used internally <-- how about externally??
 
         #: (Maybe log every row, indicating if there is no error)
         #: If a given row as an error, it will get logged here: error types:
@@ -75,42 +68,21 @@ class ImporterManager(object):
         #:       * object with given parameters not found
         self.errors: Dict[int,Dict[str,str]] = {} #: Typing subject to change
 
-        #self.object_row_map: Dict[int,List[Dict]] = {} #: Maps row to one or more elements of RecordData
-        self.object_row_map: Dict[int,List[RecordData]] = defaultdict(list) #: Maps row to one or more elements of RecordData
-
-    # def finished_required_fields(self):
-    #     ready = True
-    #
-    #     if self.importer.required_fields:
-    #         for rf in self.importer.required_fields:
-    #             if rf not in self.kvs[self.current_row][self.current_col].keys():
-    #                 ready=False
-    #     return ready
-    #
-    # def update_kvs_straight(self, field_name, value: Any):
-    #     """
-    #     :param field_name:
-    #     :param value:
-    #     """
-    #     self.current_row = 0 # STUB <-- specified outside of here
-    #     self.current_col = 0 # STUB <-- specified outside of here
-    #     self.kvs[self.current_row][self.current_col].update({field_name:value})
-    #
-    #     if self.is_m2m and self.finished_required_fields():
-    #         self.current_col += 1
-    #     elif self.finished_required_fields():
-    #         self.current_row += 1
+        #: Maps row to one or more elements of RecordData
+        self.object_row_map: Dict[int,List[RecordData]] = defaultdict(list)
 
     def update_kvs(self, field_name: str, value, row: int, col: int=0):
-        """
-        Leaky abstraction -- definitely depends on some knowledge of how this is invoked (row/col specification)
+        """N.B: - This is definitely a leaky abstraction -- this method represents the way in which this class
+        is driven after initialization.  For each row of a read csv file
 
-        Previous approach - state machine approach seemed you could depend only on the ModelImporter input,
-        and knowledge over whether this is a m2m object
+        REQUIRES:
+        * external invocation of this method should populate all of the
+          `self.importer.required_fields` and `self.importer.dependent_imports`
+          before `self.get_available_rows` is called, or any of the data getter methods queried
 
-        Other approaches????
+        TODO: This requirement isn't yet enforced
         """
-        typed_value = lookup_helpers.get_typed_value(
+        typed_value = helpers.get_typed_value(
             self.importer.field_types[field_name],value
         )
 
@@ -148,31 +120,30 @@ class ImporterManager(object):
         if not self.kvs:
             return None
 
-        if len(self.object_row_map.keys()) > 0:
+        if self.object_row_map:
             raise RuntimeError('This Method has already been called.  Retreive data through it\'s getter methods')
 
-        #: Building up query object for filtering, and object_row_map to map the results to each clause in the query
-        query = Q(**self.kvs[0][0])
-        self.object_row_map[0].append(RecordData(query=Q(**self.kvs[0][0])))
+        #: Build up cumulative query for hitting the database once, and track each records cumulative contribution
+        #: to the overall query
+        query = None
+        for row in range(self.get_latest_row() + 1):
+            for col, kv in enumerate(self.kvs[row]):
 
-        #: Store a query for each column in the list of kvs
-        for kv in self.kvs[0][1:]:
-            query |= Q(**kv)
-            self.object_row_map[0].append(RecordData(query=Q(**kv)))
+                if query is None:
+                    query = Q(**kv)
+                else:
+                    query |= Q(**kv)
 
-        for row in range(1,self.get_latest_row()):
-            for kv in self.kvs[row]: #: For each column
-                query |= Q(**kv)
                 self.object_row_map[row].append(RecordData(query=Q(**kv)))
 
-        self.objs = self.importer.model.objects.filter(query)
+        self.objects = self.importer.model.objects.filter(query)
 
-        #: With self.objs, go back through and collect each objects
+        #: With self.objects, go back through and collect each objects
         for row,record_list in self.object_row_map.items():
 
             for col,rec in enumerate(record_list):
 
-                obj = self.objs.filter(rec.query).first()
+                obj = self.objects.filter(rec.query).first()
                 self.object_row_map[row][col].available = True if obj else False
                 self.object_row_map[row][col].object = obj
 
@@ -253,7 +224,8 @@ class ImporterManager(object):
     def get_object_or_list(self, row: int) -> List[Model] or Model:
         """Helper method for most cases that don't want to unpack data returned by `get_objs_and_meta`
         :param row:
-        :return: single object if only one filtered, otherwise a list of the objects collected from the given row
+        :return: * single object if only one filtered, otherwise a list of the objects collected from the given row
+             OR  * empty list if there are now objects found with the existing row
         """
         objs = [e.object for e in self.object_row_map[row] if e.available]
-        return objs if len(objs) > 1 else objs[0]
+        return objs if len(objs) > 1 or not objs else objs[0]

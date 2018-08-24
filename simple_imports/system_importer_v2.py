@@ -114,6 +114,7 @@ class SystemImporter:
                 vertex.Adj.append(self.graph[inner_vertex.id])
 
                 #: Tell the vertex that it is many-2-many with respect to itself
+                #: TODO: use this from the helpers file if it's still necesary
                 if self.is_many_to_many(field,vertex.importer.model):
                     self.graph[inner_vertex.id].is_m2m = True
 
