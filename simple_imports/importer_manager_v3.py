@@ -3,6 +3,7 @@ import functools
 from typing import *
 from copy import deepcopy
 
+from django.db.models import Model
 from django.db.models.fields.related_descriptors import ManyToManyDescriptor
 from django.db.models import Q,QuerySet,Model,ManyToManyField
 
@@ -11,10 +12,13 @@ from . import lookup_helpers
 from .model_importer import ModelImporter
 
 class RecordData(object):
+    """Stores queried object from the database and associated query, and helper metadata (possible object)
+    object associated with the query isn't present in the system.
+    """
     def __init__(self, query: Q = None, available: bool = False):
         self.query: Q = query
         self.available: bool = available
-        self.objects = defaultdict(dict)
+        self.object: Model = None
 
 
 class ImporterManager(object):
@@ -71,7 +75,8 @@ class ImporterManager(object):
         #:       * object with given parameters not found
         self.errors: Dict[int,Dict[str,str]] = {} #: Typing subject to change
 
-        self.object_row_map: Dict[int,List[Dict]] = {}
+        #self.object_row_map: Dict[int,List[Dict]] = {} #: Maps row to one or more elements of RecordData
+        self.object_row_map: Dict[int,List[RecordData]] = defaultdict(list) #: Maps row to one or more elements of RecordData
 
     # def finished_required_fields(self):
     #     ready = True
@@ -131,43 +136,49 @@ class ImporterManager(object):
         #: one is managing something that is many to many or not
         return max(self.kvs.keys())
 
-    def get_available_rows(self):
-        """
-        Find all available objects given the key/values that have been provided thus far.
+    def get_available_rows(self) -> Dict[int,List[RecordData]]:
+        """Find all available objects given the key/values that have been provided thus far.
 
-        TODO: This method needs some improvement in code readability
-              * Should document limitations with using m2m fields
+        Populates `self.object_row_map`
+        This method is currently the only one actually making trips to the database
+
+        :returns: {row <-> List[RecordData],...} pairs.  This returned dictionary can be queried directly or through
+                  the methods outlined below.
         """
         if not self.kvs:
             return None
 
+        if len(self.object_row_map.keys()) > 0:
+            raise RuntimeError('This Method has already been called.  Retreive data through it\'s getter methods')
+
         #: Building up query object for filtering, and object_row_map to map the results to each clause in the query
         query = Q(**self.kvs[0][0])
-        self.object_row_map.update({0:[]})
-        self.object_row_map[0].append({'query': query })
+        self.object_row_map[0].append(RecordData(query=Q(**self.kvs[0][0])))
 
+        #: Store a query for each column in the list of kvs
         for kv in self.kvs[0][1:]:
             query |= Q(**kv)
-            self.object_row_map[0].append({'query': Q(**kv)})
+            self.object_row_map[0].append(RecordData(query=Q(**kv)))
 
-        for i in range(1,len(self.kvs.keys())):
-            for kv in self.kvs[i]:
+        for row in range(1,self.get_latest_row()):
+            for kv in self.kvs[row]: #: For each column
                 query |= Q(**kv)
-                if i not in self.object_row_map.keys():
-                    self.object_row_map.update({i:[]})
-                self.object_row_map[i].append({'query': Q(**kv) })
+                self.object_row_map[row].append(RecordData(query=Q(**kv)))
 
         self.objs = self.importer.model.objects.filter(query)
 
-        for row,dct_list in self.object_row_map.items():
+        #: With self.objs, go back through and collect each objects
+        for row,record_list in self.object_row_map.items():
 
-            for i,dct in enumerate(dct_list):
-                obj = self.objs.filter(dct['query']).first()
+            for col,rec in enumerate(record_list):
 
-                self.object_row_map[row][i]['available'] = True if obj else False
-                self.object_row_map[row][i]['obj'] = obj
+                obj = self.objs.filter(rec.query).first()
+                self.object_row_map[row][col].available = True if obj else False
+                self.object_row_map[row][col].object = obj
 
-    def get_objects_from_rows(self):
+        return self.object_row_map
+
+    def get_objects_from_rows(self) -> List[Model]:
         """
         This is really going to be for the 'root' object (i.e. the object actually getting imported).
 
@@ -232,9 +243,17 @@ class ImporterManager(object):
         #: Returns either, a list of uncreated objects, or a list of created objects, with m2m attached and saved
         return objects
 
-    def get_objs_and_meta(self, row: int) -> List[Dict]:
+    def get_objs_and_meta(self, row: int) -> List[RecordData]:
+        """ Queries `self.object_row_map` by row
+        :param row:
+        :return: a list of records for the queried row
+        """
         return self.object_row_map[row]
 
-    def get_objs(self, row: int) -> List[Dict]:
-        #: TODO: simply return the row, and add error checking outside this method
-        return [e['obj'] for e in self.object_row_map[row]]
+    def get_object_or_list(self, row: int) -> List[Model] or Model:
+        """Helper method for most cases that don't want to unpack data returned by `get_objs_and_meta`
+        :param row:
+        :return: single object if only one filtered, otherwise a list of the objects collected from the given row
+        """
+        objs = [e.object for e in self.object_row_map[row] if e.available]
+        return objs if len(objs) > 1 else objs[0]

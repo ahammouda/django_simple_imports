@@ -5,7 +5,7 @@ from typing import *
 from django.test import TestCase
 from .factory import create_multiple_users
 
-from ..simple_imports.importer_manager_v3 import ImporterManager
+from ..simple_imports.importer_manager_v3 import ImporterManager,RecordData
 
 from django.contrib.auth.models import User
 from ..tests_app.models import UserProfile,Company
@@ -26,11 +26,21 @@ class TestImporterManager(TestCase):
         self.usernames, self.users, self.user_profiles, self.company = create_multiple_users(self.n_objs)
 
     def test_single_object_create(self):
-        # Initialize ImporterManger for single object
-        # add a couple rows of data
-        # get available rows (uncreated)
-        # <-- TODO: This test should go in another Testing class (which isn't setup with the same richness as currently
-        pass
+        manager = ImporterManager(importer=UserImporter(),create=True)
+
+        self.assertNotIn('foo1', self.usernames)
+        self.assertNotIn('foo2', self.usernames)
+        manager.update_kvs(field_name='username',value='foo1',row=0)
+        manager.update_kvs(field_name='username',value='foo2',row=1)
+
+        users = manager.get_objects_from_rows()
+        for i in range(2):
+            self.assertIsNone(getattr(users[i], 'pk'))
+            self.assertIsInstance(users[i], User)
+
+        self.assertIsNotNone(
+            User.objects.bulk_create(users)
+        )
 
     def test_nondependent_object_get(self):
         """Given object without dependency, use it's importerManager to get available data
@@ -41,11 +51,11 @@ class TestImporterManager(TestCase):
 
         manager.get_available_rows()
         for i in range(self.n_objs):
-            objs = manager.get_objs_and_meta(i) #: Returns a list of objects only if manytomany
-            self.assertEqual(objs[0]['available'], True)
-            self.assertIsNotNone(objs[0]['obj'])
-            self.assertIsInstance(objs[0]['obj'], UserImporter.model)
-            self.assertIsNotNone(objs[0]['query'])
+            objs: List[RecordData] = manager.get_objs_and_meta(i) #: Returns a list of objects only if manytomany
+            self.assertEqual(objs[0].available, True)
+            self.assertIsNotNone(objs[0].object)
+            self.assertIsInstance(objs[0].object, User)
+            self.assertIsNotNone(objs[0].query)
 
         del manager
 
@@ -62,17 +72,17 @@ class TestImporterManager(TestCase):
 
         manager.get_available_rows()
         for i in range(self.n_objs):
-            objs = manager.get_objs_and_meta(i) #: Returns a list of objects only if manytomany
+            objs: List[RecordData] = manager.get_objs_and_meta(i) #: Returns a list of objects only if manytomany
             if i==MISSING_INDEX:
-                self.assertEqual(objs[0]['available'], False)
-                self.assertIsNone(objs[0]['obj'])
-                self.assertIsNotNone(objs[0]['query'])
+                self.assertEqual(objs[0].available, False)
+                self.assertIsNone(objs[0].object)
+                self.assertIsNotNone(objs[0].query)
                 continue
 
-            self.assertEqual(objs[0]['available'], True)
-            self.assertIsNotNone(objs[0]['obj'])
-            self.assertIsInstance(objs[0]['obj'],User)
-            self.assertIsNotNone(objs[0]['query'])
+            self.assertEqual(objs[0].available, True)
+            self.assertIsNotNone(objs[0].object)
+            self.assertIsInstance(objs[0].object, User)
+            self.assertIsNotNone(objs[0].query)
 
         del manager
 
@@ -91,25 +101,28 @@ class TestImporterManager(TestCase):
             user_manager.update_kvs(field_name='username', value=name, row=row)
             company_manger.update_kvs(field_name='natural_id', value=self.company.natural_id, row=row)
 
+        #: Retrieve data associated with kv data
         user_manager.get_available_rows()
         company_manger.get_available_rows()
 
+        #: Populate data up the dependency tree with retrieved rows
         for row in range(self.n_objs):
-            up_manager.update_kvs('company', company_manger.get_objs(row)[0], row=row)
-            up_manager.update_kvs('user', user_manager.get_objs(row)[0], row=row)
+            up_manager.update_kvs('company', company_manger.get_object_or_list(row), row=row)
+            up_manager.update_kvs('user', user_manager.get_object_or_list(row), row=row)
 
+        #: Retrieve data associated with models depended upon
         up_manager.get_available_rows()
 
         #: Test corresponding UserProfile has been returned
         for row in range(self.n_objs):
             objs = up_manager.get_objs_and_meta(row) #: Returns a list of objects only if manytomany, o/w just 1
 
-            self.assertEqual(objs[0]['available'], True)
-            self.assertIsNotNone(objs[0]['obj'])
-            self.assertIsInstance(objs[0]['obj'], UserProfile)
-            self.assertIsNotNone(objs[0]['query'])
+            self.assertEqual(objs[0].available, True)
+            self.assertIsNotNone(objs[0].object)
+            self.assertIsInstance(objs[0].object, UserProfile)
+            self.assertIsNotNone(objs[0].query)
 
-            self.assertEqual(objs[0]['obj'].user.username, self.usernames[row])
+            self.assertEqual(objs[0].object.user.username, self.usernames[row])
 
     def test_partial_dependent_object_import(self):
         pass

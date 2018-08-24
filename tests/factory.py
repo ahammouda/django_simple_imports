@@ -18,7 +18,7 @@ def create_base_models(username: str, company: Company):
         user=user,
         company = company
     )
-    print(f'Created {user.username} for company {company.name}.')
+    # print(f'Created {user.username} for company {company.name}.')
     return user,up
 
 def get_usernames(n_objs: int):
