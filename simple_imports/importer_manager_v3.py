@@ -133,14 +133,17 @@ class ImporterManager(object):
 
                 self.object_row_map[row].append(RecordData(query=Q(**kv)))
 
-        self.objects = self.importer.model.objects.filter(query)
+        self.objects = self.importer.model.objects.filter(query).distinct()
 
         #: With self.objects, go back through and collect each objects
         for row,record_list in self.object_row_map.items():
 
             for col,rec in enumerate(record_list):
 
+                #: TODO: This should be grabbing everything, and logging when more than one object is returned
+                # (TODO) unless this is some behavior that we actually want
                 obj = self.objects.filter(rec.query).first()
+
                 self.object_row_map[row][col].available = True if obj else False
                 self.object_row_map[row][col].object = obj
 

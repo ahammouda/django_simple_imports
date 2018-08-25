@@ -1,18 +1,18 @@
-import random,string
-
 from typing import *
 
 from django.test import TestCase
-from .factory import create_multiple_users, create_tags_images
+from .factory import create_multiple_users, create_tags_images, create_base_models
 
 from ..simple_imports.importer_manager_v3 import ImporterManager,RecordData
 
 from django.contrib.auth.models import User
-from ..tests_app.models import UserProfile,Company,Tag,Image
+from ..tests_app.models import UserProfile,Company,Image,Tag
 from ..tests_app.importers import UserImporter,UserProfileImporter,CompanyImporter,ImageImporter,TagImporter
 
 
 class TestImporterManager(TestCase):
+    #: TODO: Might want to break this up into multiple test files:
+    #                e.g. importer_manager/test_m2m.py, importer_manager/test_dependent.py, etc
 
     def setUp(self):
         self.n_objs = 4
@@ -210,3 +210,96 @@ class TestImporterManager(TestCase):
 
         self.assertNotEqual(image_manager.get_object_or_list(1), [])
         self.assertIsInstance(image_manager.get_object_or_list(1), Image)
+
+    def test_m2m_dependent_object_import_precision(self): #: TODO: Come up with a better name
+        """
+        Image (m)--(m)> Tag --> UserProfile --> User
+
+        e.g. see factory.create_tags_images for the creation of the below items
+              --> We'll assert that populating related data on the m2m field
+                     -> constructs the expect
+                     -> retrieves the correct results
+                     -> doesn't retrieve the incrorrect results
+        Image.pk   Image.name     Tag.name     company     user
+        i         grass        -  green           x         y
+        i         grass        -  blue            x         y
+        k         sun          -  yellow          x         y
+        l         grass        -  green           q         l
+        m         sun          -  green           q         l
+        """
+        other_company = Company.objects.create(name='Other Co', natural_id='oc')
+        _,other_user_profile = create_base_models(username='other', company=other_company)
+
+        #: Create same named tags <-- assert later that they do not get filtered out as they are from a different
+        #:                            company
+        blue = Tag.objects.create(
+            company=other_company,
+            created_by=other_user_profile,
+            name='blue',
+            slug='blue',
+            rank=0
+        )
+        green = Tag.objects.create(
+            company=other_company,
+            created_by=other_user_profile,
+            name='green',
+            slug='green',
+            rank=2
+        )
+
+        user_profile: UserProfile = self.user_profiles[0] # See self.setUp()
+
+        # ************ First Handle generating the Tags/Images Synthetically Through the Importer ************
+        # Initialize Importers
+        image_manager = ImporterManager(importer=ImageImporter())
+        tag_manager = ImporterManager(importer=TagImporter())
+        up_manager = ImporterManager(importer=UserProfileImporter())
+        company_manger = ImporterManager(importer=CompanyImporter())
+        user_manager = ImporterManager(importer=UserImporter())
+
+        # Populate leaf models of dependency tree with kv data
+        for row,image in enumerate(self.images):
+            user_manager.update_kvs(field_name='username', value=user_profile.user.username, row=row)
+            company_manger.update_kvs(field_name='natural_id', value=self.company.natural_id, row=row)
+
+        #: Retrieve data associated with kv data
+        user_manager.get_available_rows()
+        company_manger.get_available_rows()
+
+        #: Populate data up the dependency tree with retrieved rows
+        for row,image in enumerate(self.images):
+            up_manager.update_kvs('company', company_manger.get_object_or_list(row), row=row)
+            up_manager.update_kvs('user', user_manager.get_object_or_list(row), row=row)
+
+        #: Retrieve data associated with models depended upon
+        up_manager.get_available_rows()
+
+        tag_manager.update_kvs('slug', 'blue', row=0, col=0)
+        tag_manager.update_kvs('slug', 'green', row=0, col=1)
+        tag_manager.update_kvs('company', company_manger.get_object_or_list(0), row=0, col=0)
+        tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=0)
+
+        tag_manager.update_kvs('slug', 'yellow', row=1, col=0)
+        tag_manager.update_kvs('company', company_manger.get_object_or_list(1), row=1, col=0)
+        tag_manager.update_kvs('created_by', up_manager.get_object_or_list(1), row=1, col=0)
+
+        import pdb; pdb.set_trace()
+        #: Retrieve associate intermediate data
+        tag_manager.get_available_rows()
+
+        self.assertEqual(len(tag_manager.get_object_or_list(0)), 2)
+        for tag in tag_manager.get_object_or_list(0):
+            self.assertEqual(tag.company_id, self.company.id)
+
+        self.assertIsInstance(tag_manager.get_object_or_list(1), Tag)
+
+        # for row,image in enumerate(self.images):
+        #     image_manager.update_kvs('path', image.path, row=row)
+        #     image_manager.update_kvs('name', image.name, row=row)
+        #     image_manager.update_kvs('tag', tag_manager.get_object_or_list(row), row=row)
+        #     image_manager.update_kvs('company', company_manger.get_object_or_list(row), row=row)
+        #
+        # image_manager.get_available_rows()
+        #
+        # self.assertIsInstance(image_manager.get_object_or_list(0), Image)
+        # self.assertIsInstance(image_manager.get_object_or_list(1), Image)
