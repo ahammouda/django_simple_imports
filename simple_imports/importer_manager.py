@@ -140,7 +140,6 @@ class ImporterManager(object):
 
             for col,rec in enumerate(record_list):
 
-                #: TODO: This should be grabbing everything, and logging when more than one object is returned
                 objs = self.objects.filter(rec.query)
                 if objs.count() > 1:
                     #: TODO: You should be logging this
@@ -154,68 +153,23 @@ class ImporterManager(object):
         return self.object_row_map
 
     def get_objects_from_rows(self) -> List[Model]:
-        """
-        This is really going to be for the 'root' object (i.e. the object actually getting imported).
+        """This is really going to be for the 'root' object (i.e. the object actually getting imported).
 
         Therefore if a set of ImporterManagers are being used for both dependent data and the object that's being
         created, this function will _only_ be called for the object being created
-        TODO: Maybe put this logic outside of ImporterManager then
         """
         if not self.create:
             raise ValueError('This should only be called for model managers associated with new objects, '
                              'not dependent objects')
 
-        #: Check for m2m fields first:
-        m2m_keys = []
-
-        for k,v in self.kvs[0][0].items():
-            if self.m2m_field[k]:
-                m2m_keys.append(k)
-        m2m_objects = defaultdict(dict)
-
         objects = []
         #: Collect objects; if any have many to many fields, document them
-        for row in range( self.get_latest_row() + 1 ):
-
-            #: If there are any many to many fields, store each list object, and remove them from the main object
-            #:    for an initial create.
-            for k in m2m_keys:
-
-                m2m_objects[row]['objs'] = defaultdict(dict)
-
-                m2m_objects[row]['objs'][k] = deepcopy(self.kvs[row][0][k])
-                del self.kvs[row][0][k]
-
-            if m2m_keys:
-                m2m_objects[row]['query'] = Q(**self.kvs[row][0])
+        for row in range(self.get_latest_row() + 1):
 
             objects.append(
                 self.importer.model(**self.kvs[row][0])
             )
 
-        if m2m_keys:
-            self.importer.model.objects.bulk_create(objects)
-            queries = [m2m_objects[row]['query'] for row in m2m_objects.keys()]
-
-            query = queries.pop()
-            for q in queries:
-                query |= q
-
-            objects = []
-            pk_objects = self.importer.model.objects.filter(query)
-
-            for row in m2m_objects.keys():
-
-                obj = pk_objects.filter(m2m_objects[row]['query']).first()
-                for k in m2m_keys:
-                    #: USER BE WARNED:  Each one of these operations requires a trip to the database
-                    getattr(obj,k).set(m2m_objects[row]['objs'][k])
-
-                objects.append(
-                    obj
-                )
-
-        #: Returns either, a list of uncreated objects, or a list of created objects, with m2m attached and saved
         return objects
 
     def get_objs_and_meta(self, row: int) -> List[RecordData]:

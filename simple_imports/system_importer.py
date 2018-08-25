@@ -8,7 +8,7 @@ from dotdict import DotDict
 
 from .sorter import Sorter
 from .model_importer import ModelImporter
-from .importer_manager_v3 import ImporterManager
+from .importer_manager import ImporterManager
 
 import pdb
 

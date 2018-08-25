@@ -3,7 +3,7 @@ from typing import *
 from django.test import TestCase
 from .factory import create_multiple_users, create_tags_images, create_base_models
 
-from ..simple_imports.importer_manager_v3 import ImporterManager,RecordData
+from ..simple_imports.importer_manager import ImporterManager,RecordData
 
 from django.contrib.auth.models import User
 from ..tests_app.models import UserProfile,Company,Image,Tag
@@ -281,7 +281,6 @@ class TestImporterManager(TestCase):
         tag_manager.update_kvs('company', company_manger.get_object_or_list(0), row=0, col=1)
         tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=0)
         tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=1)
-
 
         tag_manager.update_kvs('slug', 'yellow', row=1, col=0)
         tag_manager.update_kvs('company', company_manger.get_object_or_list(1), row=1, col=0)
