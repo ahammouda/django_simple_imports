@@ -2,7 +2,7 @@ import random,string
 
 from django.contrib.auth.models import User
 
-from ..tests_app.models import UserProfile,Company,Tag
+from ..tests_app.models import UserProfile,Company,Tag,Image
 
 def create_base_models(username: str, company: Company):
     """Create and  return associated User and UserProfile objects given username, company
@@ -20,9 +20,6 @@ def create_base_models(username: str, company: Company):
     )
     # print(f'Created {user.username} for company {company.name}.')
     return user,up
-
-def get_usernames(n_objs: int):
-    pass
 
 
 def create_multiple_users(n_objs: int):
@@ -45,3 +42,52 @@ def create_multiple_users(n_objs: int):
         user_profiles.append(up)
 
     return usernames,users,user_profiles,company
+
+
+def create_tags_images(user_profile: UserProfile, company: Company):
+    blue = Tag.objects.create(
+        company=company,
+        created_by=user_profile,
+        name='blue',
+        slug='blue',
+        rank=0
+    )
+    yellow = Tag.objects.create(
+        company=company,
+        created_by=user_profile,
+        name='yellow',
+        slug='yellow',
+        rank=1
+    )
+    green = Tag.objects.create(
+        company=company,
+        created_by=user_profile,
+        name='green',
+        slug='green',
+        rank=2
+    )
+    grass = Image.objects.create(
+        company=company,
+        name='grass',
+        path='to/the/pic'
+    )
+    sun = Image.objects.create(
+        company=company,
+        name='sun',
+        path='to/the/pic'
+    )
+    grass0 = Image.objects.create(
+        company=company,
+        name='grass',
+        path='to/the/pic',
+    )
+    sun0 = Image.objects.create(
+        company=company,
+        name='sun',
+        path='to/the/pic'
+    )
+
+    grass.tag.set([green,blue])
+    sun.tag.set([yellow])
+
+    return [grass, sun], [blue, yellow, green]

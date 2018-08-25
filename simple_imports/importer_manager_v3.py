@@ -40,7 +40,7 @@ class ImporterManager(object):
          See `self.update_kvs` for TODO on this count
     """
 
-    def __init__(self, importer: ModelImporter=None, create: bool=False, is_m2m: bool=False):
+    def __init__(self, importer: ModelImporter=None, create: bool=False):
         #: How this manager is used outside itself depends less on the importer and hence the model, but more on
         #: its reverse relations
         self.importer = importer
@@ -59,8 +59,6 @@ class ImporterManager(object):
 
                 if self.create:
                     raise RuntimeError('Cannot currently create objects that have a m2m dependency.')
-
-        self.is_m2m = is_m2m #: Isn't used internally <-- how about externally??
 
         #: (Maybe log every row, indicating if there is no error)
         #: If a given row as an error, it will get logged here: error types:
@@ -86,15 +84,14 @@ class ImporterManager(object):
             self.importer.field_types[field_name],value
         )
 
-        # For many to many filters
-        if self.m2m_field[field_name] and not self.create:
-            #: TODO: This branch needs some testing
-            #:       --> e.g. need an image with multiple tags
-            field_name = f'{field_name}__in'
-
-        #: Edge case for m2m_field
+        #: Ensure the object is wrapped in a list <-- is this really a way you want to constrain this?
         if self.m2m_field[field_name] and type(typed_value) != list:
             typed_value = [typed_value]
+
+        # For many to many filters
+        if self.m2m_field[field_name] and not self.create:
+            #:       --> e.g. need an image with multiple tags
+            field_name = f'{field_name}__in'
 
         #: self.kvs is either being populated by object values referenced in a m2m relationship or NOT
         #: If NOT => col == 0 always, and after the first append, you'll simply be updating self.kvs[row][0]
