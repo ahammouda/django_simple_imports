@@ -141,8 +141,12 @@ class ImporterManager(object):
             for col,rec in enumerate(record_list):
 
                 #: TODO: This should be grabbing everything, and logging when more than one object is returned
-                # (TODO) unless this is some behavior that we actually want
-                obj = self.objects.filter(rec.query).first()
+                objs = self.objects.filter(rec.query)
+                if objs.count() > 1:
+                    #: TODO: You should be logging this
+                    pass
+
+                obj = objs.first()
 
                 self.object_row_map[row][col].available = True if obj else False
                 self.object_row_map[row][col].object = obj

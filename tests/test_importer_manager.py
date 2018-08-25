@@ -276,30 +276,23 @@ class TestImporterManager(TestCase):
 
         tag_manager.update_kvs('slug', 'blue', row=0, col=0)
         tag_manager.update_kvs('slug', 'green', row=0, col=1)
+        #: Anyway to avoid pushing these redundant kvs accross a row (??)
         tag_manager.update_kvs('company', company_manger.get_object_or_list(0), row=0, col=0)
+        tag_manager.update_kvs('company', company_manger.get_object_or_list(0), row=0, col=1)
         tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=0)
+        tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=1)
+
 
         tag_manager.update_kvs('slug', 'yellow', row=1, col=0)
         tag_manager.update_kvs('company', company_manger.get_object_or_list(1), row=1, col=0)
         tag_manager.update_kvs('created_by', up_manager.get_object_or_list(1), row=1, col=0)
 
-        import pdb; pdb.set_trace()
         #: Retrieve associate intermediate data
         tag_manager.get_available_rows()
 
         self.assertEqual(len(tag_manager.get_object_or_list(0)), 2)
         for tag in tag_manager.get_object_or_list(0):
             self.assertEqual(tag.company_id, self.company.id)
+            self.assertNotEqual(tag.company_id, other_company.id)
 
         self.assertIsInstance(tag_manager.get_object_or_list(1), Tag)
-
-        # for row,image in enumerate(self.images):
-        #     image_manager.update_kvs('path', image.path, row=row)
-        #     image_manager.update_kvs('name', image.name, row=row)
-        #     image_manager.update_kvs('tag', tag_manager.get_object_or_list(row), row=row)
-        #     image_manager.update_kvs('company', company_manger.get_object_or_list(row), row=row)
-        #
-        # image_manager.get_available_rows()
-        #
-        # self.assertIsInstance(image_manager.get_object_or_list(0), Image)
-        # self.assertIsInstance(image_manager.get_object_or_list(1), Image)
