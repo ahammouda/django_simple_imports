@@ -105,6 +105,23 @@ class ImporterManager(object):
         #: one is managing something that is many to many or not
         return max(self.kvs.keys())
 
+    def propogate_kvs_for_m2m(self):
+        """This is called right before `self.get_available_rows` executes
+        """
+        for row in range(self.get_latest_row()+1):
+            if len(self.kvs[row]) <= 1:
+                continue
+
+            #: N.B: This assumes this function is called after self.kvs is filled for whatever execution is
+            #       invoking this manager
+            #: (We're just copying all the fields that aren't the m2m fields)
+            kvs = deepcopy(self.kvs[row][0])
+            for k in self.kvs[row][1].keys(): # Assumming everything after the first column (0) is m2m
+                del kvs[k]
+
+            for col in range(len(self.kvs[row])-1): #: Have another think about this -1/+1
+                self.kvs[row][col+1].update(kvs)
+
     def get_available_rows(self) -> Dict[int,List[RecordData]]:
         """Find all available objects given the key/values that have been provided thus far.
 
@@ -120,6 +137,7 @@ class ImporterManager(object):
         if self.object_row_map:
             raise RuntimeError('This Method has already been called.  Retreive data through it\'s getter methods')
 
+        self.propogate_kvs_for_m2m()
         #: Build up cumulative query for hitting the database once, and track each records cumulative contribution
         #: to the overall query
         query = None

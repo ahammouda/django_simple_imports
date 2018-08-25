@@ -278,9 +278,9 @@ class TestImporterManager(TestCase):
         tag_manager.update_kvs('slug', 'green', row=0, col=1)
         #: Anyway to avoid pushing these redundant kvs accross a row (??)
         tag_manager.update_kvs('company', company_manger.get_object_or_list(0), row=0, col=0)
-        tag_manager.update_kvs('company', company_manger.get_object_or_list(0), row=0, col=1)
+        # tag_manager.update_kvs('company', company_manger.get_object_or_list(0), row=0, col=1)
         tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=0)
-        tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=1)
+        # tag_manager.update_kvs('created_by', up_manager.get_object_or_list(0), row=0, col=1)
 
         tag_manager.update_kvs('slug', 'yellow', row=1, col=0)
         tag_manager.update_kvs('company', company_manger.get_object_or_list(1), row=1, col=0)

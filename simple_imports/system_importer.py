@@ -10,13 +10,14 @@ from .sorter import Sorter
 from .model_importer import ModelImporter
 from .importer_manager import ImporterManager
 
-import pdb
-
-#: TODO: Document the necessity of these being differently
-M2M_DELIMITER = ';'
+#: TODO: delete the commented delimiter for the following reasons, AFTER documenting how to specify multiple fields
+# (TODO) for an object referenced in a m2m relationship
 # I think this is unnecesary, if you want multiple fields to be specifiable,
 # you need to put them in separate chuncks of 'a;a;a;a , b;b;b;b'
-M2M_FIELD_DELIMITER = '|'
+# M2M_FIELD_DELIMITER = '|'
+
+#: TODO: Move to a settings file, which can be overridden
+M2M_DELIMITER = ';'
 DEFAULT_DELIMITER = ','
 
 class SystemImporter:
@@ -86,6 +87,7 @@ class SystemImporter:
     def _construct_adjacency_graph(self):
 
         for i,vertex in enumerate(self.importers):
+            #: TODO: Replace DotDict with a Node class
             self.graph.append(DotDict({
                 'id': i,
                 'Adj': [],
